@@ -28,6 +28,11 @@ function satoshisToBtc(value) {
   return (value / 100000000).toFixed(8);
 }
 
+function formatBalanceLine(label, sats) {
+  const cssClass = sats !== 0 ? ' class="nonzero-balance"' : '';
+  return `<span${cssClass}>${label}: ${satoshisToBtc(sats)} BTC</span>`;
+}
+
 function addressLink(address) {
   return `<a href="https://blockstream.info/address/${address}" target="_blank" rel="noopener noreferrer">${address}</a>`;
 }
@@ -298,7 +303,7 @@ async function checkBalance() {
       fundedAddressesSection += 'No addresses with balance found\n';
     } else {
       for (const funded of fundedAddresses) {
-        fundedAddressesSection += `Address: ${addressLink(funded.address)}\nType: ${funded.label}\nConfirmed: ${satoshisToBtc(funded.confirmed)} BTC\nUnconfirmed: ${satoshisToBtc(funded.unconfirmed)} BTC\n\n`;
+        fundedAddressesSection += `Address: ${addressLink(funded.address)}\nType: ${funded.label}\n${formatBalanceLine('Confirmed', funded.confirmed)}\n${formatBalanceLine('Unconfirmed', funded.unconfirmed)}\n\n`;
       }
     }
 
@@ -307,7 +312,8 @@ async function checkBalance() {
       if (entry.failed) {
         addressesByPathBIP84 += `${addressLink(entry.address)} | Unable to fetch balance\n`;
       } else {
-        addressesByPathBIP84 += `${addressLink(entry.address)} | Confirmed: ${satoshisToBtc(entry.confirmed)} BTC | Unconfirmed: ${satoshisToBtc(entry.unconfirmed)} BTC\n`;
+        const cssClass = entry.confirmed !== 0 || entry.unconfirmed !== 0 ? ' class="nonzero-balance"' : '';
+        addressesByPathBIP84 += `<span${cssClass}>${addressLink(entry.address)} | Confirmed: ${satoshisToBtc(entry.confirmed)} BTC | Unconfirmed: ${satoshisToBtc(entry.unconfirmed)} BTC</span>\n`;
       }
     }
 
@@ -316,7 +322,8 @@ async function checkBalance() {
       if (entry.failed) {
         addressesByPathBIP49 += `${addressLink(entry.address)} | Unable to fetch balance\n`;
       } else {
-        addressesByPathBIP49 += `${addressLink(entry.address)} | Confirmed: ${satoshisToBtc(entry.confirmed)} BTC | Unconfirmed: ${satoshisToBtc(entry.unconfirmed)} BTC\n`;
+        const cssClass = entry.confirmed !== 0 || entry.unconfirmed !== 0 ? ' class="nonzero-balance"' : '';
+        addressesByPathBIP49 += `<span${cssClass}>${addressLink(entry.address)} | Confirmed: ${satoshisToBtc(entry.confirmed)} BTC | Unconfirmed: ${satoshisToBtc(entry.unconfirmed)} BTC</span>\n`;
       }
     }
 
@@ -325,7 +332,8 @@ async function checkBalance() {
       if (entry.failed) {
         addressesByPathBIP44 += `${addressLink(entry.address)} | Unable to fetch balance\n`;
       } else {
-        addressesByPathBIP44 += `${addressLink(entry.address)} | Confirmed: ${satoshisToBtc(entry.confirmed)} BTC | Unconfirmed: ${satoshisToBtc(entry.unconfirmed)} BTC\n`;
+        const cssClass = entry.confirmed !== 0 || entry.unconfirmed !== 0 ? ' class="nonzero-balance"' : '';
+        addressesByPathBIP44 += `<span${cssClass}>${addressLink(entry.address)} | Confirmed: ${satoshisToBtc(entry.confirmed)} BTC | Unconfirmed: ${satoshisToBtc(entry.unconfirmed)} BTC</span>\n`;
       }
     }
 
@@ -334,11 +342,11 @@ async function checkBalance() {
       addressesWithoutBalanceSection += 'No addresses without balance found\n';
     } else {
       for (const item of sortedWithoutBalance) {
-        addressesWithoutBalanceSection += `Address: ${addressLink(item.address)}\nType: ${item.label}\nConfirmed: ${satoshisToBtc(item.confirmed)} BTC\nUnconfirmed: ${satoshisToBtc(item.unconfirmed)} BTC\n\n`;
+        addressesWithoutBalanceSection += `Address: ${addressLink(item.address)}\nType: ${item.label}\n${formatBalanceLine('Confirmed', item.confirmed)}\n${formatBalanceLine('Unconfirmed', item.unconfirmed)}\n\n`;
       }
     }
 
-    result.innerHTML = `<div class="left">BIP84<br>Confirmed: ${satoshisToBtc(byPath.BIP84.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP84.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPathBIP84.replace(/\n/g, '<br>')}</details><br>BIP49<br>Confirmed: ${satoshisToBtc(byPath.BIP49.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP49.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPathBIP49.replace(/\n/g, '<br>')}</details><br>BIP44<br>Confirmed: ${satoshisToBtc(byPath.BIP44.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP44.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPathBIP44.replace(/\n/g, '<br>')}</details></div><br><div class="right"><strong>Total</strong><br><strong>Confirmed: ${satoshisToBtc(confirmedTotal)} BTC</strong><br><strong>Unconfirmed: ${satoshisToBtc(unconfirmedTotal)} BTC</strong></div><details open><summary>Addresses with balance</summary><div class="left">${fundedAddressesSection.replace(/\n/g, '<br>')}</div></details><details><summary>Addresses without balance</summary><div class="left">${addressesWithoutBalanceSection.replace(/\n/g, '<br>')}</div></details>`;
+    result.innerHTML = `<div class="left">BIP84<br>${formatBalanceLine('Confirmed', byPath.BIP84.confirmed)}<br>${formatBalanceLine('Unconfirmed', byPath.BIP84.unconfirmed)}<br><details><summary>Addresses</summary>${addressesByPathBIP84.replace(/\n/g, '<br>')}</details><br>BIP49<br>${formatBalanceLine('Confirmed', byPath.BIP49.confirmed)}<br>${formatBalanceLine('Unconfirmed', byPath.BIP49.unconfirmed)}<br><details><summary>Addresses</summary>${addressesByPathBIP49.replace(/\n/g, '<br>')}</details><br>BIP44<br>${formatBalanceLine('Confirmed', byPath.BIP44.confirmed)}<br>${formatBalanceLine('Unconfirmed', byPath.BIP44.unconfirmed)}<br><details><summary>Addresses</summary>${addressesByPathBIP44.replace(/\n/g, '<br>')}</details></div><br><div class="right"><strong>Total</strong><br><strong>${formatBalanceLine('Confirmed', confirmedTotal)}</strong><br><strong>${formatBalanceLine('Unconfirmed', unconfirmedTotal)}</strong></div><details open><summary>Addresses with balance</summary><div class="left">${fundedAddressesSection.replace(/\n/g, '<br>')}</div></details><details><summary>Addresses without balance</summary><div class="left">${addressesWithoutBalanceSection.replace(/\n/g, '<br>')}</div></details>`;
     foundBitcoin.hidden = confirmedTotal === 0 && unconfirmedTotal === 0;
     if (failedCount > 0) {
       result.innerHTML += `<br><div class="left">Some address checks failed: ${failedCount}</div>`;

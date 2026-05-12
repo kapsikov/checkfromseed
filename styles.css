@@ -33,6 +33,10 @@ p {
   text-align: right;
 }
 
+.nonzero-balance {
+  color: darkorange;
+}
+
 #found-bitcoin {
   width: 100%;
   max-width: 800px;
