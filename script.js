@@ -202,9 +202,9 @@ async function checkBalance() {
       BIP44: { confirmed: 0, unconfirmed: 0 }
     };
     const addressesByPath = {
-      BIP84: '',
-      BIP49: '',
-      BIP44: ''
+      BIP84: [],
+      BIP49: [],
+      BIP44: []
     };
 
     for (let i = 0; i < settled.length; i += 1) {
@@ -215,10 +215,20 @@ async function checkBalance() {
         unconfirmedTotal += item.value.unconfirmed;
         byPath[pathLabel].confirmed += item.value.confirmed;
         byPath[pathLabel].unconfirmed += item.value.unconfirmed;
-        addressesByPath[pathLabel] += `${addressLink(addressItems[i].address)} | Confirmed: ${satoshisToBtc(item.value.confirmed)} BTC | Unconfirmed: ${satoshisToBtc(item.value.unconfirmed)} BTC\n`;
+        addressesByPath[pathLabel].push({
+          address: addressItems[i].address,
+          confirmed: item.value.confirmed,
+          unconfirmed: item.value.unconfirmed,
+          failed: false
+        });
       } else {
         failedCount += 1;
-        addressesByPath[pathLabel] += `${addressLink(addressItems[i].address)} | Unable to fetch balance\n`;
+        addressesByPath[pathLabel].push({
+          address: addressItems[i].address,
+          confirmed: 0,
+          unconfirmed: 0,
+          failed: true
+        });
         console.error('Address fetch failed:', item.reason);
       }
     }
@@ -256,6 +266,31 @@ async function checkBalance() {
       return b.unconfirmed - a.unconfirmed;
     });
 
+    const sortedWithoutBalance = [];
+    for (let i = 0; i < addressItems.length; i += 1) {
+      const balanceResult = settled[i];
+      const item = addressItems[i];
+      if (balanceResult.status === 'fulfilled' && balanceResult.value.confirmed === 0 && balanceResult.value.unconfirmed === 0) {
+        sortedWithoutBalance.push({
+          address: item.address,
+          label: item.label,
+          confirmed: 0,
+          unconfirmed: 0
+        });
+      }
+    }
+
+    sortedWithoutBalance.sort((a, b) => a.address.localeCompare(b.address));
+
+    for (const key of ['BIP84', 'BIP49', 'BIP44']) {
+      addressesByPath[key].sort((a, b) => {
+        if (a.failed && !b.failed) return 1;
+        if (!a.failed && b.failed) return -1;
+        if (b.confirmed !== a.confirmed) return b.confirmed - a.confirmed;
+        return b.unconfirmed - a.unconfirmed;
+      });
+    }
+
     let fundedAddressesSection = 'Addresses with balance\n';
     if (fundedAddresses.length === 0) {
       fundedAddressesSection += 'No addresses with balance found\n';
@@ -265,7 +300,43 @@ async function checkBalance() {
       }
     }
 
-    result.innerHTML = `<div class="left">BIP84<br>Confirmed: ${satoshisToBtc(byPath.BIP84.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP84.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPath.BIP84.replace(/\n/g, '<br>')}</details><br>BIP49<br>Confirmed: ${satoshisToBtc(byPath.BIP49.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP49.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPath.BIP49.replace(/\n/g, '<br>')}</details><br>BIP44<br>Confirmed: ${satoshisToBtc(byPath.BIP44.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP44.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPath.BIP44.replace(/\n/g, '<br>')}</details></div><br><div class="right"><strong>Total</strong><br><strong>Confirmed: ${satoshisToBtc(confirmedTotal)} BTC</strong><br><strong>Unconfirmed: ${satoshisToBtc(unconfirmedTotal)} BTC</strong></div><details open><summary>Addresses with balance</summary><div class="left">${fundedAddressesSection.replace(/\n/g, '<br>')}</div></details><details><summary>Addresses without balance</summary><div class="left">${addressesWithoutBalanceSection.replace(/\n/g, '<br>')}</div></details>`;
+    let addressesByPathBIP84 = '';
+    for (const entry of addressesByPath.BIP84) {
+      if (entry.failed) {
+        addressesByPathBIP84 += `${addressLink(entry.address)} | Unable to fetch balance\n`;
+      } else {
+        addressesByPathBIP84 += `${addressLink(entry.address)} | Confirmed: ${satoshisToBtc(entry.confirmed)} BTC | Unconfirmed: ${satoshisToBtc(entry.unconfirmed)} BTC\n`;
+      }
+    }
+
+    let addressesByPathBIP49 = '';
+    for (const entry of addressesByPath.BIP49) {
+      if (entry.failed) {
+        addressesByPathBIP49 += `${addressLink(entry.address)} | Unable to fetch balance\n`;
+      } else {
+        addressesByPathBIP49 += `${addressLink(entry.address)} | Confirmed: ${satoshisToBtc(entry.confirmed)} BTC | Unconfirmed: ${satoshisToBtc(entry.unconfirmed)} BTC\n`;
+      }
+    }
+
+    let addressesByPathBIP44 = '';
+    for (const entry of addressesByPath.BIP44) {
+      if (entry.failed) {
+        addressesByPathBIP44 += `${addressLink(entry.address)} | Unable to fetch balance\n`;
+      } else {
+        addressesByPathBIP44 += `${addressLink(entry.address)} | Confirmed: ${satoshisToBtc(entry.confirmed)} BTC | Unconfirmed: ${satoshisToBtc(entry.unconfirmed)} BTC\n`;
+      }
+    }
+
+    addressesWithoutBalanceSection = 'Addresses without balance\n';
+    if (sortedWithoutBalance.length === 0) {
+      addressesWithoutBalanceSection += 'No addresses without balance found\n';
+    } else {
+      for (const item of sortedWithoutBalance) {
+        addressesWithoutBalanceSection += `Address: ${addressLink(item.address)}\nType: ${item.label}\nConfirmed: ${satoshisToBtc(item.confirmed)} BTC\nUnconfirmed: ${satoshisToBtc(item.unconfirmed)} BTC\n\n`;
+      }
+    }
+
+    result.innerHTML = `<div class="left">BIP84<br>Confirmed: ${satoshisToBtc(byPath.BIP84.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP84.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPathBIP84.replace(/\n/g, '<br>')}</details><br>BIP49<br>Confirmed: ${satoshisToBtc(byPath.BIP49.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP49.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPathBIP49.replace(/\n/g, '<br>')}</details><br>BIP44<br>Confirmed: ${satoshisToBtc(byPath.BIP44.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP44.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPathBIP44.replace(/\n/g, '<br>')}</details></div><br><div class="right"><strong>Total</strong><br><strong>Confirmed: ${satoshisToBtc(confirmedTotal)} BTC</strong><br><strong>Unconfirmed: ${satoshisToBtc(unconfirmedTotal)} BTC</strong></div><details open><summary>Addresses with balance</summary><div class="left">${fundedAddressesSection.replace(/\n/g, '<br>')}</div></details><details><summary>Addresses without balance</summary><div class="left">${addressesWithoutBalanceSection.replace(/\n/g, '<br>')}</div></details>`;
     if (failedCount > 0) {
       result.innerHTML += `<br><div class="left">Some address checks failed: ${failedCount}</div>`;
     }
