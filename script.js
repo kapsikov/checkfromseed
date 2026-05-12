@@ -1,6 +1,7 @@
 const seedField = document.querySelector('#seed');
 const checkButton = document.querySelector('#check');
 const result = document.querySelector('#result');
+const foundBitcoin = document.querySelector('#found-bitcoin');
 
 let libsPromise;
 
@@ -148,6 +149,7 @@ async function fetchBalancesWithProgress(addressItems, onProgress) {
 async function checkBalance() {
   const phrase = normalizeSeedPhrase(seedField.value);
   result.textContent = 'Checking...';
+  foundBitcoin.hidden = true;
 
   try {
     console.log('Step 1: loading libraries');
@@ -337,6 +339,7 @@ async function checkBalance() {
     }
 
     result.innerHTML = `<div class="left">BIP84<br>Confirmed: ${satoshisToBtc(byPath.BIP84.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP84.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPathBIP84.replace(/\n/g, '<br>')}</details><br>BIP49<br>Confirmed: ${satoshisToBtc(byPath.BIP49.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP49.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPathBIP49.replace(/\n/g, '<br>')}</details><br>BIP44<br>Confirmed: ${satoshisToBtc(byPath.BIP44.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP44.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPathBIP44.replace(/\n/g, '<br>')}</details></div><br><div class="right"><strong>Total</strong><br><strong>Confirmed: ${satoshisToBtc(confirmedTotal)} BTC</strong><br><strong>Unconfirmed: ${satoshisToBtc(unconfirmedTotal)} BTC</strong></div><details open><summary>Addresses with balance</summary><div class="left">${fundedAddressesSection.replace(/\n/g, '<br>')}</div></details><details><summary>Addresses without balance</summary><div class="left">${addressesWithoutBalanceSection.replace(/\n/g, '<br>')}</div></details>`;
+    foundBitcoin.hidden = confirmedTotal === 0 && unconfirmedTotal === 0;
     if (failedCount > 0) {
       result.innerHTML += `<br><div class="left">Some address checks failed: ${failedCount}</div>`;
     }
@@ -344,6 +347,7 @@ async function checkBalance() {
     console.error('Unable to check balance right now');
     console.error(error);
     result.textContent = getUserErrorMessage(error);
+    foundBitcoin.hidden = true;
   }
 }
 

@@ -32,3 +32,14 @@ p {
 .right {
   text-align: right;
 }
+
+#found-bitcoin {
+  width: 100%;
+  max-width: 800px;
+  margin-top: 8px;
+}
+
+#found-bitcoin img {
+  max-width: 100%;
+  height: auto;
+}
