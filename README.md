@@ -1,4 +1,4 @@
-# checkfromseed
+# [checkfromseed](https://kapsikov.github.io/checkfromseed)
 
 # **YES. IT IS UNSAFE.**
 
