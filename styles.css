@@ -20,6 +20,10 @@ p {
   margin-top: 8px;
 }
 
+.section-title {
+  font-weight: 700;
+}
+
 #result {
   margin-top: 8px;
   padding: 6px;
