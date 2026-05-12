@@ -27,6 +27,10 @@ function satoshisToBtc(value) {
   return (value / 100000000).toFixed(8);
 }
 
+function addressLink(address) {
+  return `<a href="https://blockstream.info/address/${address}" target="_blank" rel="noopener noreferrer">${address}</a>`;
+}
+
 function concatBytes(...arrays) {
   let totalLength = 0;
   for (const arr of arrays) {
@@ -136,6 +140,11 @@ async function checkBalance() {
       BIP49: { confirmed: 0, unconfirmed: 0 },
       BIP44: { confirmed: 0, unconfirmed: 0 }
     };
+    const addressesByPath = {
+      BIP84: '',
+      BIP49: '',
+      BIP44: ''
+    };
 
     for (let i = 0; i < settled.length; i += 1) {
       const item = settled[i];
@@ -145,15 +154,44 @@ async function checkBalance() {
         unconfirmedTotal += item.value.unconfirmed;
         byPath[pathLabel].confirmed += item.value.confirmed;
         byPath[pathLabel].unconfirmed += item.value.unconfirmed;
+        addressesByPath[pathLabel] += `${addressLink(addressItems[i].address)} | Confirmed: ${satoshisToBtc(item.value.confirmed)} BTC | Unconfirmed: ${satoshisToBtc(item.value.unconfirmed)} BTC\n`;
       } else {
         failedCount += 1;
+        addressesByPath[pathLabel] += `${addressLink(addressItems[i].address)} | Unable to fetch balance\n`;
         console.error('Address fetch failed:', item.reason);
       }
     }
 
-    result.textContent = `BIP84 Confirmed: ${satoshisToBtc(byPath.BIP84.confirmed)} BTC\nBIP84 Unconfirmed: ${satoshisToBtc(byPath.BIP84.unconfirmed)} BTC\nBIP49 Confirmed: ${satoshisToBtc(byPath.BIP49.confirmed)} BTC\nBIP49 Unconfirmed: ${satoshisToBtc(byPath.BIP49.unconfirmed)} BTC\nBIP44 Confirmed: ${satoshisToBtc(byPath.BIP44.confirmed)} BTC\nBIP44 Unconfirmed: ${satoshisToBtc(byPath.BIP44.unconfirmed)} BTC\nTotal Confirmed: ${satoshisToBtc(confirmedTotal)} BTC\nTotal Unconfirmed: ${satoshisToBtc(unconfirmedTotal)} BTC`;
+    let addressesWithBalanceSection = 'Addresses with balance\n';
+    let addressesWithoutBalanceSection = 'Addresses without balance\n';
+    let addressesWithBalance = 0;
+    let addressesWithoutBalance = 0;
+    for (let i = 0; i < addressItems.length; i += 1) {
+      const item = addressItems[i];
+      const balanceResult = settled[i];
+      if (balanceResult.status === 'fulfilled') {
+        const hasBalance = balanceResult.value.confirmed !== 0 || balanceResult.value.unconfirmed !== 0;
+        if (hasBalance) {
+          addressesWithBalance += 1;
+          addressesWithBalanceSection += `Address: ${addressLink(item.address)}\nType: ${item.label}\nConfirmed: ${satoshisToBtc(balanceResult.value.confirmed)} BTC\nUnconfirmed: ${satoshisToBtc(balanceResult.value.unconfirmed)} BTC\n\n`;
+        } else {
+          addressesWithoutBalance += 1;
+          addressesWithoutBalanceSection += `Address: ${addressLink(item.address)}\nType: ${item.label}\nConfirmed: ${satoshisToBtc(balanceResult.value.confirmed)} BTC\nUnconfirmed: ${satoshisToBtc(balanceResult.value.unconfirmed)} BTC\n\n`;
+        }
+      }
+    }
+
+    if (addressesWithBalance === 0) {
+      addressesWithBalanceSection += 'No addresses with balance found\n';
+    }
+
+    if (addressesWithoutBalance === 0) {
+      addressesWithoutBalanceSection += 'No addresses without balance found\n';
+    }
+
+    result.innerHTML = `<div class="left">BIP84<br>Confirmed: ${satoshisToBtc(byPath.BIP84.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP84.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPath.BIP84.replace(/\n/g, '<br>')}</details><br>BIP49<br>Confirmed: ${satoshisToBtc(byPath.BIP49.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP49.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPath.BIP49.replace(/\n/g, '<br>')}</details><br>BIP44<br>Confirmed: ${satoshisToBtc(byPath.BIP44.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP44.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPath.BIP44.replace(/\n/g, '<br>')}</details></div><br><div class="right"><strong>Total</strong><br><strong>Confirmed: ${satoshisToBtc(confirmedTotal)} BTC</strong><br><strong>Unconfirmed: ${satoshisToBtc(unconfirmedTotal)} BTC</strong></div><details open><summary>Addresses with balance</summary><div class="left">${addressesWithBalanceSection.replace(/\n/g, '<br>')}</div></details><details><summary>Addresses without balance</summary><div class="left">${addressesWithoutBalanceSection.replace(/\n/g, '<br>')}</div></details>`;
     if (failedCount > 0) {
-      result.textContent += `\nSome address checks failed: ${failedCount}`;
+      result.innerHTML += `<br><div class="left">Some address checks failed: ${failedCount}</div>`;
     }
   } catch (error) {
     console.error('Unable to check balance right now');
