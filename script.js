@@ -72,10 +72,10 @@ function deriveAddress(root, pathPrefix, change, index, type, hashes, base) {
   return toBase58Check(concatBytes(new Uint8Array([0x00]), pubkeyHash), hashes, base);
 }
 
-async function fetchAddressBalance(address) {
-  const response = await fetch(`https://blockstream.info/api/address/${address}`);
+async function fetchAddressBalanceFromApi(address, apiBaseUrl) {
+  const response = await fetch(`${apiBaseUrl}/address/${address}`);
   if (!response.ok) {
-    throw new Error('Failed to fetch address data');
+    throw new Error(`API error (${response.status}) from ${apiBaseUrl}`);
   }
 
   const data = await response.json();
@@ -87,12 +87,71 @@ async function fetchAddressBalance(address) {
   return { confirmed, unconfirmed };
 }
 
+function getUserErrorMessage(error) {
+  if (!error || !error.message) {
+    return 'Unable to check balance right now';
+  }
+
+  if (error.message.includes('Invalid seed phrase')) {
+    return 'Invalid seed phrase';
+  }
+
+  if (error.message.includes('Failed to fetch dynamically imported module')) {
+    return 'Unable to load required libraries right now';
+  }
+
+  if (error.message.includes('API error (429)')) {
+    return 'Rate limited by balance API, please try again shortly';
+  }
+
+  if (error.message.includes('API error (5')) {
+    return 'Balance API is currently unavailable';
+  }
+
+  if (error.message.includes('Failed to fetch')) {
+    return 'Network error while contacting balance API';
+  }
+
+  return 'Unable to check balance right now';
+}
+
+async function fetchAddressBalanceWithFallback(address) {
+  const primaryApi = 'https://blockstream.info/api';
+  const fallbackApi = 'https://mempool.space/api';
+
+  try {
+    return await fetchAddressBalanceFromApi(address, primaryApi);
+  } catch (error) {
+    console.warn(`Primary API failed for ${address}, trying fallback`, error);
+    return fetchAddressBalanceFromApi(address, fallbackApi);
+  }
+}
+
+async function fetchBalancesWithProgress(addressItems, onProgress) {
+  let done = 0;
+  const total = addressItems.length;
+  const tasks = addressItems.map(async (item) => {
+    try {
+      const value = await fetchAddressBalanceWithFallback(item.address);
+      return { status: 'fulfilled', value };
+    } catch (reason) {
+      return { status: 'rejected', reason };
+    } finally {
+      done += 1;
+      onProgress(done, total);
+    }
+  });
+
+  return Promise.all(tasks);
+}
+
 async function checkBalance() {
   const phrase = normalizeSeedPhrase(seedField.value);
   result.textContent = 'Checking...';
 
   try {
     console.log('Step 1: loading libraries');
+    result.textContent = 'Loading libraries...';
     const [bip39, englishWordlistModule, bip32Module, shaModule, ripemdModule, baseModule] = await loadLibs();
     const { validateMnemonic, mnemonicToSeedSync } = bip39;
     const wordlist = englishWordlistModule.wordlist;
@@ -101,11 +160,11 @@ async function checkBalance() {
     const base = { bech32: baseModule.bech32, base58: baseModule.base58 };
 
     if (!validateMnemonic(phrase, wordlist)) {
-      result.textContent = 'Invalid seed phrase';
-      return;
+      throw new Error('Invalid seed phrase');
     }
 
     console.log('Step 2: deriving addresses');
+    result.textContent = 'Deriving addresses...';
     const seed = mnemonicToSeedSync(phrase);
     const root = HDKey.fromMasterSeed(seed);
     const derivationPaths = [
@@ -130,7 +189,9 @@ async function checkBalance() {
     }
 
     console.log(`Step 3: fetching balances for ${addressItems.length} addresses`);
-    const settled = await Promise.allSettled(addressItems.map((item) => fetchAddressBalance(item.address)));
+    const settled = await fetchBalancesWithProgress(addressItems, (done, total) => {
+      result.textContent = `Checking balances... ${done}/${total}`;
+    });
 
     let confirmedTotal = 0;
     let unconfirmedTotal = 0;
@@ -162,9 +223,8 @@ async function checkBalance() {
       }
     }
 
-    let addressesWithBalanceSection = 'Addresses with balance\n';
+    const fundedAddresses = [];
     let addressesWithoutBalanceSection = 'Addresses without balance\n';
-    let addressesWithBalance = 0;
     let addressesWithoutBalance = 0;
     for (let i = 0; i < addressItems.length; i += 1) {
       const item = addressItems[i];
@@ -172,8 +232,12 @@ async function checkBalance() {
       if (balanceResult.status === 'fulfilled') {
         const hasBalance = balanceResult.value.confirmed !== 0 || balanceResult.value.unconfirmed !== 0;
         if (hasBalance) {
-          addressesWithBalance += 1;
-          addressesWithBalanceSection += `Address: ${addressLink(item.address)}\nType: ${item.label}\nConfirmed: ${satoshisToBtc(balanceResult.value.confirmed)} BTC\nUnconfirmed: ${satoshisToBtc(balanceResult.value.unconfirmed)} BTC\n\n`;
+          fundedAddresses.push({
+            address: item.address,
+            label: item.label,
+            confirmed: balanceResult.value.confirmed,
+            unconfirmed: balanceResult.value.unconfirmed
+          });
         } else {
           addressesWithoutBalance += 1;
           addressesWithoutBalanceSection += `Address: ${addressLink(item.address)}\nType: ${item.label}\nConfirmed: ${satoshisToBtc(balanceResult.value.confirmed)} BTC\nUnconfirmed: ${satoshisToBtc(balanceResult.value.unconfirmed)} BTC\n\n`;
@@ -181,22 +245,34 @@ async function checkBalance() {
       }
     }
 
-    if (addressesWithBalance === 0) {
-      addressesWithBalanceSection += 'No addresses with balance found\n';
-    }
-
     if (addressesWithoutBalance === 0) {
       addressesWithoutBalanceSection += 'No addresses without balance found\n';
     }
 
-    result.innerHTML = `<div class="left">BIP84<br>Confirmed: ${satoshisToBtc(byPath.BIP84.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP84.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPath.BIP84.replace(/\n/g, '<br>')}</details><br>BIP49<br>Confirmed: ${satoshisToBtc(byPath.BIP49.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP49.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPath.BIP49.replace(/\n/g, '<br>')}</details><br>BIP44<br>Confirmed: ${satoshisToBtc(byPath.BIP44.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP44.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPath.BIP44.replace(/\n/g, '<br>')}</details></div><br><div class="right"><strong>Total</strong><br><strong>Confirmed: ${satoshisToBtc(confirmedTotal)} BTC</strong><br><strong>Unconfirmed: ${satoshisToBtc(unconfirmedTotal)} BTC</strong></div><details open><summary>Addresses with balance</summary><div class="left">${addressesWithBalanceSection.replace(/\n/g, '<br>')}</div></details><details><summary>Addresses without balance</summary><div class="left">${addressesWithoutBalanceSection.replace(/\n/g, '<br>')}</div></details>`;
+    fundedAddresses.sort((a, b) => {
+      if (b.confirmed !== a.confirmed) {
+        return b.confirmed - a.confirmed;
+      }
+      return b.unconfirmed - a.unconfirmed;
+    });
+
+    let fundedAddressesSection = 'Addresses with balance\n';
+    if (fundedAddresses.length === 0) {
+      fundedAddressesSection += 'No addresses with balance found\n';
+    } else {
+      for (const funded of fundedAddresses) {
+        fundedAddressesSection += `Address: ${addressLink(funded.address)}\nType: ${funded.label}\nConfirmed: ${satoshisToBtc(funded.confirmed)} BTC\nUnconfirmed: ${satoshisToBtc(funded.unconfirmed)} BTC\n\n`;
+      }
+    }
+
+    result.innerHTML = `<div class="left">BIP84<br>Confirmed: ${satoshisToBtc(byPath.BIP84.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP84.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPath.BIP84.replace(/\n/g, '<br>')}</details><br>BIP49<br>Confirmed: ${satoshisToBtc(byPath.BIP49.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP49.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPath.BIP49.replace(/\n/g, '<br>')}</details><br>BIP44<br>Confirmed: ${satoshisToBtc(byPath.BIP44.confirmed)} BTC<br>Unconfirmed: ${satoshisToBtc(byPath.BIP44.unconfirmed)} BTC<br><details><summary>Addresses</summary>${addressesByPath.BIP44.replace(/\n/g, '<br>')}</details></div><br><div class="right"><strong>Total</strong><br><strong>Confirmed: ${satoshisToBtc(confirmedTotal)} BTC</strong><br><strong>Unconfirmed: ${satoshisToBtc(unconfirmedTotal)} BTC</strong></div><details open><summary>Addresses with balance</summary><div class="left">${fundedAddressesSection.replace(/\n/g, '<br>')}</div></details><details><summary>Addresses without balance</summary><div class="left">${addressesWithoutBalanceSection.replace(/\n/g, '<br>')}</div></details>`;
     if (failedCount > 0) {
       result.innerHTML += `<br><div class="left">Some address checks failed: ${failedCount}</div>`;
     }
   } catch (error) {
     console.error('Unable to check balance right now');
     console.error(error);
-    result.textContent = 'Unable to check balance right now';
+    result.textContent = getUserErrorMessage(error);
   }
 }
 
