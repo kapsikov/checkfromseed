@@ -14,3 +14,7 @@ textarea {
 p {
   margin-top: 8px;
 }
+
+#result {
+  white-space: pre-wrap;
+}
